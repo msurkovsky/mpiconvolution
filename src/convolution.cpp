@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int mask_w = 5, mask_h = 5;
+    int mask_w = 3, mask_h = 3;
     float mask[] = {
         0.0, 1.0, 0.0,
         1.0, 1.0, 1.0,
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 24, matrix_h = 24;
+    int matrix_w = 12, matrix_h = 12;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
@@ -47,21 +47,21 @@ int main(int argc, char *argv[]) {
     int block_size = block_width * block_height;
 
     float block[block_size];
-//    memset(block, 0, sizeof(int) * block_size); // set a block to the zero values.
 
     if (rank == 0) { // divide matrix
         float *matrix = generate_matrix(matrix_w, matrix_h, 1.0);
 
         if (x_size * y_size != numtasks) {
             printf("The number of processes does not correspond with dividing of grid!\n");
+            printf("%d * %d != %d\n", x_size, y_size, numtasks);
             MPI_Finalize();
             return 0;
         }
 
         if (matrix_w / x_size < mask_w || matrix_h / y_size < mask_h) {
+            printf("This example is not suitable for parallel processing!\n");
             printf("W: %d / %d < %d\n", matrix_w, x_size, mask_w);
             printf("H: %d / %d < %d\n", matrix_h, y_size, mask_h);
-            printf("This example is not suitable for parallel processing!\n");
             MPI_Finalize();
             return 0;
         }
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
             for (int j = 0; j < matrix_h; j++) {
                 int x = i / original_block_width;
                 int y = j / original_block_height;
-                blocks[y * x_size + x][((j % original_block_height) + mh_overlay) * block_width + 
+                blocks[y * x_size + x][((j % original_block_height) + mh_overlay) * block_width +
                                         (i % original_block_width)  + mw_overlay] =
                     matrix[j * matrix_w + i];
             }
@@ -85,32 +85,56 @@ int main(int argc, char *argv[]) {
         for (int n = 0; n < y_size; n++) {
             int j1 = n * original_block_height;         // from top
             int j2 = j1 + original_block_height - 1;    // from bottom
-            printf("{%d, %d}\n", j1, j2);
-            for (int m = 1; m <= mh_overlay; m++) {
-                int mm = mh_overlay - m;
-                if (j1 - m >= 0) {
-                    printf("j1-m = (%d-%d) = %d\n", j1, m, j1-m);
-                    // copy from left-hand side
-                    int y = j1 / original_block_height; // i need to get the right block (process);
-                    for (int i = 0; i < matrix_w; i++) {
-                        int x = i / original_block_width;
-                        printf("proc(%d):[%d, %d] = %6.2f\n", 
-                                y * x_size + x,
-                                i % original_block_width + mw_overlay,
-                                mm,
-                                matrix[(j1-m) * matrix_w + i]); 
-                        blocks[y * x_size + x][mm * block_width + 
-                                               (i % original_block_width) + mw_overlay] =
-                            matrix[(j1-m) * matrix_w + i];
+            for (int m_cshift = 1; m_cshift <= mh_overlay; m_cshift++) {
+                // matrix column shift
+                int column_idx = mh_overlay - m_cshift;
+                if (j1 - m_cshift >= 0) {
+                    int x, y = j1 / original_block_height; // i need to get the right block (process);
+                    for (int i = 0; i < matrix_w; i++) {   // row index
+                        x = i / original_block_width;
+                        blocks[y * x_size + x][column_idx * block_width +
+                                              (i % original_block_width) + mw_overlay] =
+                            matrix[(j1-m_cshift) * matrix_w + i];
                     }
                 }
 
-
-                if (j2 + m < matrix_h) {
-                    // copy from right-hand side
+                column_idx = block_height - mh_overlay + m_cshift - 1;
+                if (j2 + m_cshift < matrix_h) {
+                    int x, y = j2 / original_block_height;
+                    for (int i = 0; i < matrix_w; i++) {
+                        x = i / original_block_width;
+                        blocks[y * x_size + x][column_idx *  block_width +
+                                              (i % original_block_width) + mw_overlay] =
+                            matrix[(j2+m_cshift) * matrix_w + i];
+                    }
                 }
             }
         }
+
+
+//        for (int n = 0; n < x_size; n++) {
+//            int i1 = n * original_block_width;
+//            int i2 = i1 + original_block_width - 1;
+//
+//            for (int m_rshift = 1; m_rshift <= mw_overlay; m_rshift++) {
+//                // matrix row shift
+//                int row_idx = mw_overlay - m_rshift;
+//                if (i1 - m_rshift >= 0) {
+//                    int x = i1 / original_block_width, y;
+//                    for (int j = 0; j < matrix_h; j++) {
+//                        y = j / original_block_height;
+//                        printf("proc: %d, [%d, %d] = %6.2f\n",
+//                                y * x_size + x,
+//                                j + mh_overlay,
+//                                row_idx,
+//                                matrix[j * matrix_w + (i1-m_rshift)]);
+//                        blocks[y * x_size + x][(j + mh_overlay) * block_width +
+//                                               (row_idx % original_block_width)] =
+//                            matrix[j * matrix_w + (i1-m_rshift)];
+//                    }
+//                }
+//            }
+//        }
         // zero process
 //        memcpy(block, blocks[0], sizeof(int) * block_size);
 //
@@ -162,7 +186,7 @@ float *generate_matrix(int width, int height, float value) {
     return out;
 }
 
-float *convolve(float *grid, int g_width, int g_height, 
+float *convolve(float *grid, int g_width, int g_height,
                 float *mask, int m_width, int m_height) {
 
     float *out = new float[g_width * g_height];
@@ -180,8 +204,8 @@ float *convolve(float *grid, int g_width, int g_height,
                     x = i + k;
                     y = j + l;
                     if (x >= 0 && x < g_width && y >= 0 && y < g_height) {
-                        sum += (grid[g_height * y + x] * 
-                                mask[m_height * (mh_half+l) + (mw_half+k)]); 
+                        sum += (grid[g_height * y + x] *
+                                mask[m_height * (mh_half+l) + (mw_half+k)]);
                         count++;
                     }
                 }
