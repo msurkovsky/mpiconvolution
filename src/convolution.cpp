@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int mask_w = 3, mask_h = 3;
+    int mask_w = 5, mask_h = 5;
     float mask[] = {
         0.0, 1.0, 0.0,
         1.0, 1.0, 1.0,
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 12, matrix_h = 12;
+    int matrix_w = 24, matrix_h = 24;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
@@ -71,70 +71,33 @@ int main(int argc, char *argv[]) {
         // initialize the blocks to the zero values
         memset(blocks, 0, sizeof(float) * numtasks * block_size);
         // fill block
+        int task = 0;
+
+        print_matrix(matrix, matrix_w, matrix_h);
+        printf("\n");
+
         for (int i = 0; i < matrix_w; i++) {
             for (int j = 0; j < matrix_h; j++) {
                 int x = i / original_block_width;
                 int y = j / original_block_height;
-                blocks[y * x_size + x][((j % original_block_height) + mh_overlay) * block_width +
-                                        (i % original_block_width)  + mw_overlay] =
-                    matrix[j * matrix_w + i];
-            }
-        }
+                int task = y * x_size + x;
 
-        print_matrix(matrix, matrix_w, matrix_h);
-        for (int n = 0; n < y_size; n++) {
-            int j1 = n * original_block_height;         // from top
-            int j2 = j1 + original_block_height - 1;    // from bottom
-            for (int m_cshift = 1; m_cshift <= mh_overlay; m_cshift++) {
-                // matrix column shift
-                int column_idx = mh_overlay - m_cshift;
-                if (j1 - m_cshift >= 0) {
-                    int x, y = j1 / original_block_height; // i need to get the right block (process);
-                    for (int i = 0; i < matrix_w; i++) {   // row index
-                        x = i / original_block_width;
-                        blocks[y * x_size + x][column_idx * block_width +
-                                              (i % original_block_width) + mw_overlay] =
-                            matrix[(j1-m_cshift) * matrix_w + i];
-                    }
-                }
+                int m = (i % original_block_width) + mw_overlay;
+                int n = (j % original_block_height) + mh_overlay;
 
-                column_idx = block_height - mh_overlay + m_cshift - 1;
-                if (j2 + m_cshift < matrix_h) {
-                    int x, y = j2 / original_block_height;
-                    for (int i = 0; i < matrix_w; i++) {
-                        x = i / original_block_width;
-                        blocks[y * x_size + x][column_idx *  block_width +
-                                              (i % original_block_width) + mw_overlay] =
-                            matrix[(j2+m_cshift) * matrix_w + i];
-                    }
+                blocks[task][n * block_width + m] = matrix[j * matrix_w + i];
+                if (j % original_block_height < mh_overlay && j - mh_overlay >= 0) {
+                    int oldtask = task;
+                    y = (j-mh_overlay) / original_block_height;
+                    task = y * x_size + x;
+                    n = block_height - mh_overlay + (j % original_block_height);
+                    printf("bw = %d; mh = %d; j = %d; ow = %d\n", block_height, mh_overlay, j, original_block_height);
+                    printf("task<-oldtask, n = %d<-%d, %d\n", task,oldtask,n);
+                    blocks[task][n * block_width + m] = matrix[j * matrix_w + i];
                 }
             }
         }
 
-
-//        for (int n = 0; n < x_size; n++) {
-//            int i1 = n * original_block_width;
-//            int i2 = i1 + original_block_width - 1;
-//
-//            for (int m_rshift = 1; m_rshift <= mw_overlay; m_rshift++) {
-//                // matrix row shift
-//                int row_idx = mw_overlay - m_rshift;
-//                if (i1 - m_rshift >= 0) {
-//                    int x = i1 / original_block_width, y;
-//                    for (int j = 0; j < matrix_h; j++) {
-//                        y = j / original_block_height;
-//                        printf("proc: %d, [%d, %d] = %6.2f\n",
-//                                y * x_size + x,
-//                                j + mh_overlay,
-//                                row_idx,
-//                                matrix[j * matrix_w + (i1-m_rshift)]);
-//                        blocks[y * x_size + x][(j + mh_overlay) * block_width +
-//                                               (row_idx % original_block_width)] =
-//                            matrix[j * matrix_w + (i1-m_rshift)];
-//                    }
-//                }
-//            }
-//        }
         // zero process
 //        memcpy(block, blocks[0], sizeof(int) * block_size);
 //
