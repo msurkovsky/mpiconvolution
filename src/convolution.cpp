@@ -86,14 +86,46 @@ int main(int argc, char *argv[]) {
                 int n = (j % original_block_height) + mh_overlay;
 
                 blocks[task][n * block_width + m] = matrix[j * matrix_w + i];
+
+                // share data
+                int xx = -1, yy = -1, mm, nn;
+                if (i % original_block_width < mw_overlay && i - mw_overlay >= 0) {
+                    xx = (i - mw_overlay) / original_block_width;
+                    mm = block_width - mw_overlay + (i % original_block_width);
+                } else if (i % original_block_width >= original_block_width - mw_overlay
+                        && i + mw_overlay < matrix_w) {
+
+                    xx = (i + mw_overlay) / original_block_width;
+                    mm = (i % original_block_width) - original_block_width + mw_overlay;
+                }
+
+                // set x-overlay
+                if (xx > -1) {
+                    task = y * x_size + xx;
+                    blocks[task][n * block_width + mm] = matrix[j * matrix_w + i];
+                }
+
                 if (j % original_block_height < mh_overlay && j - mh_overlay >= 0) {
-                    int oldtask = task;
-                    y = (j-mh_overlay) / original_block_height;
-                    task = y * x_size + x;
-                    n = block_height - mh_overlay + (j % original_block_height);
-                    printf("bw = %d; mh = %d; j = %d; ow = %d\n", block_height, mh_overlay, j, original_block_height);
-                    printf("task<-oldtask, n = %d<-%d, %d\n", task,oldtask,n);
-                    blocks[task][n * block_width + m] = matrix[j * matrix_w + i];
+
+                    yy = (j-mh_overlay) / original_block_height;
+                    nn = block_height - mh_overlay + (j % original_block_height);
+                } else if (j % original_block_height >= original_block_height - mh_overlay
+                        && j + mh_overlay < matrix_h) {
+
+                    yy = (j+mh_overlay) / original_block_height;
+                    nn = (j % original_block_height) - original_block_height + mh_overlay;
+                }
+
+                // set y-overlay
+                if (yy > -1) {
+                    task = yy * x_size + x;
+                    blocks[task][nn * block_width + m] = matrix[j * matrix_w + i];
+                }
+
+                // set x-y overlay
+                if (xx > -1 && y > -1) {
+                    task = yy * x_size + xx;
+                    blocks[task][nn * block_width + mm] = matrix[j * matrix_w + i];
                 }
             }
         }
