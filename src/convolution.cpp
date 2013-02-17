@@ -7,9 +7,25 @@
 #define TAG_BLOCK_WIDTH  1
 #define TAG_BLOCK_HEIGHT 2
 
+struct Range {
+
+    int low;
+    int heigh;
+
+    Range() {
+        this->low = 0;
+        this->heigh = 0;
+    }
+
+    Range(int low, int heigh) {
+        this->low = low;
+        this->heigh = heigh;
+    }
+};
+
 float *generate_matrix(int, int, float);
-float *convolve(float *, int, int, float *, int, int);
-void print_matrix(float*, int, int);
+float *convolve(const float *, int, int, const float *, int, int);
+void print_matrix(const float*, int, int);
 
 int main(int argc, char *argv[]) {
 
@@ -26,16 +42,17 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int mask_w = 5, mask_h = 5;
-    float mask[] = {
+    int mask_w = 3, mask_h = 3;
+    const float mask[] = {
         0.0, 1.0, 0.0,
         1.0, 1.0, 1.0,
         0.0, 1.0, 0.0
     };
+
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 24, matrix_h = 24;
+    int matrix_w = 12, matrix_h = 12;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
@@ -50,7 +67,6 @@ int main(int argc, char *argv[]) {
 
     if (rank == 0) { // divide matrix
         float *matrix = generate_matrix(matrix_w, matrix_h, 1.0);
-
         if (x_size * y_size != numtasks) {
             printf("The number of processes does not correspond with dividing of grid!\n");
             printf("%d * %d != %d\n", x_size, y_size, numtasks);
@@ -66,71 +82,77 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
+        print_matrix(matrix, matrix_w, matrix_h);
+        printf("\n");
+
         // divide matrix into smaller pieces
         float blocks[numtasks][block_size];
         // initialize the blocks to the zero values
         memset(blocks, 0, sizeof(float) * numtasks * block_size);
-        // fill block
-        int task = 0;
+        // fill blocks
 
-        print_matrix(matrix, matrix_w, matrix_h);
-        printf("\n");
+        Range x_ranges[x_size];
+        Range y_ranges[y_size];
+        int b,e;
+        for (int i = 0; i < x_size; i++) {
+           b = i * original_block_width;
+           e = b + original_block_width - 1;
+           x_ranges[i] = Range(b - mw_overlay, e + mw_overlay);
+        }
 
-        for (int i = 0; i < matrix_w; i++) {
-            for (int j = 0; j < matrix_h; j++) {
-                int x = i / original_block_width;
-                int y = j / original_block_height;
-                int task = y * x_size + x;
+        for (int i = 0; i < y_size; i++) {
+            b = i * original_block_height;
+            e = b + original_block_height - 1;
+            y_ranges[i] = Range(b - mh_overlay, e + mh_overlay);
+        }
 
-                int m = (i % original_block_width) + mw_overlay;
-                int n = (j % original_block_height) + mh_overlay;
+        for (int y = 0; y < y_size; y++) {
+            Range y_range = y_ranges[y];
+            for (int j = y_range.low, j1=0; j <= y_range.heigh; j++, j1++) {
 
-                blocks[task][n * block_width + m] = matrix[j * matrix_w + i];
+                if (j < 0 || j >= matrix_h) continue;
 
-                // share data
-                int xx = -1, yy = -1, mm, nn;
-                if (i % original_block_width < mw_overlay && i - mw_overlay >= 0) {
-                    xx = (i - mw_overlay) / original_block_width;
-                    mm = block_width - mw_overlay + (i % original_block_width);
-                } else if (i % original_block_width >= original_block_width - mw_overlay
-                        && i + mw_overlay < matrix_w) {
+                for (int x = 0; x < x_size; x++) {
+                    Range x_range = x_ranges[x];
+                    int task = y * x_size + x;
 
-                    xx = (i + mw_overlay) / original_block_width;
-                    mm = (i % original_block_width) - original_block_width + mw_overlay;
-                }
-
-                // set x-overlay
-                if (xx > -1) {
-                    task = y * x_size + xx;
-                    blocks[task][n * block_width + mm] = matrix[j * matrix_w + i];
-                }
-
-                if (j % original_block_height < mh_overlay && j - mh_overlay >= 0) {
-
-                    yy = (j-mh_overlay) / original_block_height;
-                    nn = block_height - mh_overlay + (j % original_block_height);
-                } else if (j % original_block_height >= original_block_height - mh_overlay
-                        && j + mh_overlay < matrix_h) {
-
-                    yy = (j+mh_overlay) / original_block_height;
-                    nn = (j % original_block_height) - original_block_height + mh_overlay;
-                }
-
-                // set y-overlay
-                if (yy > -1) {
-                    task = yy * x_size + x;
-                    blocks[task][nn * block_width + m] = matrix[j * matrix_w + i];
-                }
-
-                // set x-y overlay
-                if (xx > -1 && y > -1) {
-                    task = yy * x_size + xx;
-                    blocks[task][nn * block_width + mm] = matrix[j * matrix_w + i];
+                    if (x_range.low < 0) {
+                        // shift dest pointer
+                        int end_overlay = mw_overlay;
+                        if (x_range.heigh >= matrix_w) {
+                            end_overlay = 2 * mw_overlay;
+                        }
+                        memcpy(&blocks[task][j1 * block_width + mw_overlay],
+                               &matrix[j * matrix_w], // there is + 0 instead of x_range.low
+                               sizeof(float) * (block_width - end_overlay));
+                    } else if (x_range.heigh >= matrix_w) {
+                        // cut block size
+                        memcpy(&blocks[task][j1 * block_width],
+                               &matrix[j * matrix_w + x_range.low],
+                               sizeof(float) * (block_width - mw_overlay));
+                    } else {
+                        memcpy(&blocks[task][j1 * block_width],
+                               &matrix[j * matrix_w + x_range.low],
+                               sizeof(float) * block_width);
+                    }
                 }
             }
         }
 
-        // zero process
+        for (int t = 0; t < numtasks; t++) {
+//            float *conv = convolve(
+//                blocks[t], block_width, block_height,
+//                mask, mask_w, mask_h);
+
+            printf("proc: %d:\n", t);
+            print_matrix(blocks[t], block_width, block_height);
+//            printf("\n");
+//            print_matrix(conv, block_width, block_height);
+            printf("\n");
+//            delete [] conv;
+        }
+
+//        // zero process
 //        memcpy(block, blocks[0], sizeof(int) * block_size);
 //
 //        // sent to others processes
@@ -139,13 +161,12 @@ int main(int argc, char *argv[]) {
 //        }
 //        MPI_Waitall(numtasks-1, reqs, stats);
 
-        for (int t = 0; t < numtasks; t++) {
-            printf("proc: %i:\n", t);
-            print_matrix(blocks[t], block_width, block_height);
-            printf("\n");
-        }
+//        for (int t = 0; t < numtasks; t++) {
+//            printf("proc: %i:\n", t);
+//            print_matrix(blocks[t], block_width, block_height);
+//            printf("\n");
+//        }
         delete [] matrix;
-
     } else {
 
 //        MPI_Irecv(&block, block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
@@ -174,15 +195,15 @@ float *generate_matrix(int width, int height, float value) {
 
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
-            out[height * j + i] = value++;
+            out[height * j + i] = value;
         }
     }
 
     return out;
 }
 
-float *convolve(float *grid, int g_width, int g_height,
-                float *mask, int m_width, int m_height) {
+float *convolve(const float *grid, int g_width, int g_height,
+                const float *mask, int m_width, int m_height) {
 
     float *out = new float[g_width * g_height];
 
@@ -205,14 +226,15 @@ float *convolve(float *grid, int g_width, int g_height,
                     }
                 }
             }
-            out[g_height * j + i] = sum /count;
+//            out[g_height * j + i] = sum /count;
+            out[g_height * j + i] = sum;
         }
     }
 
     return out;
 }
 
-void print_matrix(float *matrix, int width, int height) {
+void print_matrix(const float *matrix, int width, int height) {
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
             printf("%6.2f ", matrix[j * width + i]);
