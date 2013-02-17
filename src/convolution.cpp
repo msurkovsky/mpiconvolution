@@ -42,17 +42,26 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int mask_w = 3, mask_h = 3;
+    int mask_w = 7, mask_h = 7;
     const float mask[] = {
-        0.0, 1.0, 0.0,
-        1.0, 1.0, 1.0,
-        0.0, 1.0, 0.0
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
     };
 
+//    const float mask[] = {
+//        0.0, 1.0, 0.0,
+//        1.0, 0.0, 1.0,
+//        0.0, 1.0, 0.0,
+//    };
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 12, matrix_h = 12;
+    int matrix_w = 768, matrix_h = 768;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
@@ -82,8 +91,8 @@ int main(int argc, char *argv[]) {
             return 0;
         }
 
-        print_matrix(matrix, matrix_w, matrix_h);
-        printf("\n");
+//        print_matrix(matrix, matrix_w, matrix_h);
+//        printf("\n");
 
         // divide matrix into smaller pieces
         float blocks[numtasks][block_size];
@@ -120,6 +129,7 @@ int main(int argc, char *argv[]) {
                         // shift dest pointer
                         int end_overlay = mw_overlay;
                         if (x_range.heigh >= matrix_w) {
+                            // if an overlay happens from the top and the bottom together.
                             end_overlay = 2 * mw_overlay;
                         }
                         memcpy(&blocks[task][j1 * block_width + mw_overlay],
@@ -139,53 +149,61 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        for (int t = 0; t < numtasks; t++) {
-//            float *conv = convolve(
-//                blocks[t], block_width, block_height,
-//                mask, mask_w, mask_h);
+        // zero process
+        memcpy(block, blocks[0], sizeof(float) * block_size);
 
-            printf("proc: %d:\n", t);
-            print_matrix(blocks[t], block_width, block_height);
-//            printf("\n");
-//            print_matrix(conv, block_width, block_height);
-            printf("\n");
-//            delete [] conv;
+        // sent to others processes
+        for (int t = 1; t < numtasks; t++) {
+            MPI_Isend(&blocks[t], block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
+        MPI_Waitall(numtasks-1, reqs, stats);
 
-//        // zero process
-//        memcpy(block, blocks[0], sizeof(int) * block_size);
-//
-//        // sent to others processes
-//        for (int t = 1; t < numtasks; t++) {
-//            MPI_Isend(&blocks[t], block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
-//        }
-//        MPI_Waitall(numtasks-1, reqs, stats);
-
-//        for (int t = 0; t < numtasks; t++) {
-//            printf("proc: %i:\n", t);
-//            print_matrix(blocks[t], block_width, block_height);
-//            printf("\n");
-//        }
         delete [] matrix;
     } else {
 
-//        MPI_Irecv(&block, block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
-//        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+        MPI_Irecv(&block, block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
+        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
     }
 
-//    // it works every process alone
-//    float *conv = convolve(block, block_width, block_height, mask, mask_w, mask_h);
+    // it works every process alone
+    float *conv = convolve(block, block_width, block_height, mask, mask_w, mask_h);
+
+    MPI_Isend(conv, original_block_width * original_block_height, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
+
+    if (rank == 0) {
+        // zero process
+        int original_block_size = original_block_width * original_block_height;
+        float blocks[numtasks][original_block_size];
+        memcpy(blocks[0], conv, sizeof(float) * original_block_size);
+
+        // receive data from other processes
+        for (int t = 1;  t < numtasks; t++) {
+            MPI_Irecv(&blocks[t], original_block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
+        }
+        MPI_Waitall(numtasks-1, reqs, stats);
+
+//        // complete matrix
+//        // TODO: maybe use better copy (memcpy)
+//        float matrix[matrix_w * matrix_h];
+//        for (int i = 0; i < matrix_w; i++) {
+//            int x = i / original_block_width;
+//            for (int j = 0; j < matrix_h; j++) {
+//                int y = j / original_block_height;
+//                int task = y * x_size + x;
 //
-//    // print a specific part on each process
-//    for (int i = 0; i < block_width; i++) {
-//        for (int j = 0; j < block_height; j++) {
-//            printf("%.2f ", conv[j * block_width + i]);
+//                matrix[j * matrix_w + i] =
+//                    blocks[task][(j % original_block_height) * original_block_width +
+//                                 (i % original_block_width)];
+//            }
 //        }
-//        printf("\n");
-//    }
-//    printf("\n");
 //
-//    delete [] conv;
+////        printf("Result:\n");
+////        print_matrix(matrix, matrix_w, matrix_h);
+////        printf("\n");
+    }
+
+//    MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+    delete [] conv;
     MPI_Finalize();
     return 0;
 }
@@ -202,32 +220,36 @@ float *generate_matrix(int width, int height, float value) {
     return out;
 }
 
-float *convolve(const float *grid, int g_width, int g_height,
-                const float *mask, int m_width, int m_height) {
+float *convolve(const float *matrix, // input matrix
+                int matrix_width,
+                int matrix_height,
+                const float *mask,  // convolution mask
+                int mask_width,
+                int mask_height) {
 
-    float *out = new float[g_width * g_height];
+    int mask_w_half = mask_width / 2;
+    int mask_h_half = mask_height / 2;
 
-    int mw_half = m_width / 2;
-    int mh_half = m_height / 2;
+    float *out = new float[
+        (matrix_width  - 2*mask_w_half) *
+        (matrix_height - 2*mask_h_half)];
 
     int x, y;
-    for (int i = 0; i < g_width; i++) {
-        for (int j = 0; j < g_height; j++) {
+    for (int i = mask_w_half; i < matrix_width - mask_w_half; i++) {
+        for (int j = mask_h_half; j < matrix_height - mask_h_half; j++) {
             float sum = 0.0;
             int count = 0;
-            for (int k = -mw_half; k <= mw_half; k++) {
-                for (int l = -mh_half; l <= mh_half; l++) {
+            for (int k = -mask_w_half; k <= mask_w_half; k++) {
+                for (int l = -mask_h_half; l <= mask_h_half; l++) {
                     x = i + k;
                     y = j + l;
-                    if (x >= 0 && x < g_width && y >= 0 && y < g_height) {
-                        sum += (grid[g_height * y + x] *
-                                mask[m_height * (mh_half+l) + (mw_half+k)]);
-                        count++;
-                    }
+
+                    sum += (matrix[y * matrix_width + x] *
+                            mask[(mask_h_half+l) * mask_width + (mask_w_half+k)]);
+                    count++;
                 }
             }
-//            out[g_height * j + i] = sum /count;
-            out[g_height * j + i] = sum;
+            out[(j-mask_h_half) * (matrix_width - 2*mask_w_half) + (i-mask_w_half)] = sum / count;
         }
     }
 
