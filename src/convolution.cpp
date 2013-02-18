@@ -26,6 +26,7 @@ struct Range {
 float *generate_matrix(int, int, float);
 float *convolve(const float *, int, int, const float *, int, int);
 void print_matrix(const float*, int, int);
+void dealocate_2d_float_array(float **, int, int);
 
 int main(int argc, char *argv[]) {
 
@@ -53,29 +54,43 @@ int main(int argc, char *argv[]) {
         1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
     };
 
+//    int mask_w = 5, mask_h = 5;
+//    const float mask[] = {
+//        0.0, 0.0, 1.0, 0.0, 0.0,
+//        0.0, 0.0, 1.0, 0.0, 0.0,
+//        1.0, 1.0, 0.0, 1.0, 1.0,
+//        0.0, 0.0, 1.0, 0.0, 0.0,
+//        0.0, 0.0, 1.0, 0.0, 0.0,
+//    };
+
+//    int mask_w = 3, mask_h = 3;
 //    const float mask[] = {
 //        0.0, 1.0, 0.0,
 //        1.0, 0.0, 1.0,
 //        0.0, 1.0, 0.0,
 //    };
+
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 768, matrix_h = 768;
+    int matrix_w = 8192, matrix_h = 8192;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
 
     int original_block_width = matrix_w / x_size;
     int original_block_height = matrix_h / y_size;
+    int original_block_size = original_block_width * original_block_height;
+
     int block_width = original_block_width + 2 * mw_overlay;
     int block_height = original_block_height + 2 * mh_overlay;
     int block_size = block_width * block_height;
 
-    float block[block_size];
+    float *block = new float[block_size];
 
+    float *matrix;
     if (rank == 0) { // divide matrix
-        float *matrix = generate_matrix(matrix_w, matrix_h, 1.0);
+        matrix = generate_matrix(matrix_w, matrix_h, 1.0);
         if (x_size * y_size != numtasks) {
             printf("The number of processes does not correspond with dividing of grid!\n");
             printf("%d * %d != %d\n", x_size, y_size, numtasks);
@@ -95,11 +110,15 @@ int main(int argc, char *argv[]) {
 //        printf("\n");
 
         // divide matrix into smaller pieces
-        float blocks[numtasks][block_size];
+        float **blocks;
+        blocks = new float*[numtasks];
         // initialize the blocks to the zero values
-        memset(blocks, 0, sizeof(float) * numtasks * block_size);
-        // fill blocks
+        for (int t = 0; t < numtasks; t++) {
+            blocks[t] = new float[block_size];
+            memset(blocks[t], 0, sizeof(float) * block_size);
+        }
 
+        // fill blocks
         Range x_ranges[x_size];
         Range y_ranges[y_size];
         int b,e;
@@ -154,56 +173,59 @@ int main(int argc, char *argv[]) {
 
         // sent to others processes
         for (int t = 1; t < numtasks; t++) {
-            MPI_Isend(&blocks[t], block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
+            MPI_Isend(blocks[t], block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
         MPI_Waitall(numtasks-1, reqs, stats);
 
-        delete [] matrix;
+        dealocate_2d_float_array(blocks, numtasks, block_size);
+//        delete [] matrix;
     } else {
 
-        MPI_Irecv(&block, block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
+        MPI_Irecv(block, block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
         MPI_Wait(&reqs[rank-1], &stats[rank-1]);
     }
 
     // it works every process alone
     float *conv = convolve(block, block_width, block_height, mask, mask_w, mask_h);
 
-    MPI_Isend(conv, original_block_width * original_block_height, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
-
     if (rank == 0) {
         // zero process
-        int original_block_size = original_block_width * original_block_height;
-        float blocks[numtasks][original_block_size];
+        float **blocks;
+        blocks = new float*[numtasks];
+        for (int t = 0; t < numtasks; t++) {
+            blocks[t] = new float[original_block_size];
+        }
         memcpy(blocks[0], conv, sizeof(float) * original_block_size);
 
         // receive data from other processes
         for (int t = 1;  t < numtasks; t++) {
-            MPI_Irecv(&blocks[t], original_block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
+            MPI_Irecv(blocks[t], original_block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
         MPI_Waitall(numtasks-1, reqs, stats);
 
-//        // complete matrix
-//        // TODO: maybe use better copy (memcpy)
-//        float matrix[matrix_w * matrix_h];
-//        for (int i = 0; i < matrix_w; i++) {
-//            int x = i / original_block_width;
-//            for (int j = 0; j < matrix_h; j++) {
-//                int y = j / original_block_height;
-//                int task = y * x_size + x;
-//
-//                matrix[j * matrix_w + i] =
-//                    blocks[task][(j % original_block_height) * original_block_width +
-//                                 (i % original_block_width)];
-//            }
-//        }
-//
-////        printf("Result:\n");
-////        print_matrix(matrix, matrix_w, matrix_h);
-////        printf("\n");
+        // complete matrix
+        // TODO: maybe use better copy (memcpy)
+        for (int i = 0; i < matrix_w; i++) {
+            int x = i / original_block_width;
+            for (int j = 0; j < matrix_h; j++) {
+                int y = j / original_block_height;
+                int task = y * x_size + x;
+
+                matrix[j * matrix_w + i] =
+                   blocks[task][(j % original_block_height) * original_block_width +
+                                 (i % original_block_width)];
+            }
+        }
+
+        dealocate_2d_float_array(blocks, numtasks, original_block_size);
+        delete [] matrix;
+    } else {
+        MPI_Isend(conv, original_block_size, MPI_FLOAT, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
+        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
     }
 
-//    MPI_Wait(&reqs[rank-1], &stats[rank-1]);
     delete [] conv;
+    delete [] block;
     MPI_Finalize();
     return 0;
 }
@@ -213,7 +235,7 @@ float *generate_matrix(int width, int height, float value) {
 
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
-            out[height * j + i] = value;
+            out[j * width + i] = value;
         }
     }
 
@@ -263,4 +285,11 @@ void print_matrix(const float *matrix, int width, int height) {
         }
         printf("\n");
     }
+}
+
+void dealocate_2d_float_array(float **array, int width, int height) {
+    for (int i = 0; i < width; i++) {
+        delete [] array[i];
+    }
+    delete [] array;
 }
