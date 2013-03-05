@@ -13,6 +13,7 @@ class Matrix {
         Matrix() {
             this->width = 0;
             this->height = 0;
+            array = new T[0];
         }
 
         Matrix(size_t width, size_t height) {
@@ -138,14 +139,14 @@ class Matrix {
 
         Matrix<T> *divide(const size_t count,
                 const size_t x_divide, const size_t y_divide,
-                const size_t mw_overlay, const size_t mh_overlay) {
+                const size_t w_overlay, const size_t h_overlay) {
 
             size_t original_block_width = width / x_divide;
             size_t original_block_height = height / y_divide;
             size_t original_block_size = original_block_width * original_block_height;
 
-            size_t block_width = original_block_width + 2 * mw_overlay;
-            size_t block_height = original_block_height + 2 * mh_overlay;
+            size_t block_width = original_block_width + 2 * w_overlay;
+            size_t block_height = original_block_height + 2 * h_overlay;
             size_t block_size = block_width * block_height;
 
             T **blocks;
@@ -162,13 +163,13 @@ class Matrix {
             for (int i = 0; i < x_divide; i++) {
                begin = i * original_block_width;
                end = begin + original_block_width - 1;
-               x_ranges[i] = Range(begin - mw_overlay, end + mw_overlay);
+               x_ranges[i] = Range(begin - w_overlay, end + w_overlay);
             }
 
             for (int i = 0; i < y_divide; i++) {
                 begin = i * original_block_height;
                 end = begin + original_block_height - 1;
-                y_ranges[i] = Range(begin - mh_overlay, end + mh_overlay);
+                y_ranges[i] = Range(begin - h_overlay, end + h_overlay);
             }
 
             for (int y = 0; y < y_divide; y++) {
@@ -183,19 +184,19 @@ class Matrix {
 
                         if (x_range.low < 0) {
                             // shift dest pointer
-                            int end_overlay = mw_overlay;
+                            int end_overlay = w_overlay;
                             if (x_range.heigh >= width) {
                                 // if an overlay happens from the top and the bottom together.
-                                end_overlay = 2 * mw_overlay;
+                                end_overlay = 2 * w_overlay;
                             }
-                            memcpy(&blocks[task][j1 * block_width + mw_overlay],
+                            memcpy(&blocks[task][j1 * block_width + w_overlay],
                                    &array[j * width], // there is + 0 instead of x_range.low
                                    sizeof(T) * (block_width - end_overlay));
                         } else if (x_range.heigh >= width) {
                             // cut block size
                             memcpy(&blocks[task][j1 * block_width],
                                    &array[j * width + x_range.low],
-                                   sizeof(T) * (block_width - mw_overlay));
+                                   sizeof(T) * (block_width - w_overlay));
                         } else {
                             memcpy(&blocks[task][j1 * block_width],
                                    &array[j * width + x_range.low],
@@ -216,6 +217,33 @@ class Matrix {
             return matrices;
         }
 
+        static Matrix<T> join(const unsigned int width,
+                              const unsigned int height,
+                              const unsigned int x_divide,
+                              const unsigned int y_divide,
+                              Matrix<T> * matrices,
+                              const unsigned int x_overlay=0,
+                              const unsigned int y_overlay=0) {
+
+            int block_width = width / x_divide;
+            int block_height = height / y_divide;
+
+            Matrix<T> out(width, height);
+
+            for (int i = 0; i < width; i++) {
+                int x = i / block_width;
+                for (int j = 0; j < height; j++) {
+                    int y = j / block_height;
+                    int block_idx = y * x_divide + x;
+
+                    out.set(i, j, matrices[block_idx].get(
+                        (i % block_width) + x_overlay,
+                        (j % block_height) + y_overlay));
+                }
+            }
+
+            return out;
+        }
 
     protected:
         struct Triple {
