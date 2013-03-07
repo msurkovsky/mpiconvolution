@@ -9,59 +9,84 @@ int main() {
 //         0.0,  1.0, 1.0
 //    };
 
-    float m[] =
-    {
-        -1, -1, -1, -1, -1,
-        -1,  2,  2,  2, -1,
-        -1,  2,  8,  2, -1,
-        -1,  2,  2,  2, -1,
-        -1, -1, -1, -1, -1,
-    };
+//    float m[] =
+//    {
+//        -1, -1, -1, -1, -1,
+//        -1,  2,  2,  2, -1,
+//        -1,  2,  8,  2, -1,
+//        -1,  2,  2,  2, -1,
+//        -1, -1, -1, -1, -1,
+//    };
 
 //    float m[] =
 //    {
-//        0, 0, 0, 0, 0, 0
-//        0, 0, 0, 0, 0, 0
-//        0, 0, 0, 0, 0, 0
-//        0, 0, 0, 0, 0, 0
-//        0, 0, 0, 0, 0, 0
-//        0, 0, 0, 0, 0, 0
+//        -2, -1, 0, 1, 2,
+//        -2, -1, 0, 1, 2,
+//        -2, -1, 0, 1, 2,
+//        -2, -1, 0, 1, 2,
+//        -2, -1, 0, 1, 2,
 //    };
 
-    Matrix<float> mask(5, 5, m);
+//    float m[] = {
+//        -1, 1, 0, 1, 0, 1, 0,
+//        1, -1, 1, 0, 1, 0, 1,
+//        0, 1, -1, 1, 0, 1, 0,
+//        1, 0, 1, -1, 1, 0, 1,
+//        0, 1, 0, 1, -1, 1, 0,
+//        1, 0, 1, 0, 1, -1, 1,
+//        0, 1, 0, 1, 0, 1, -1,
+//    };
+
+    float m[] = {
+        -1, 0,  1,
+         0, 1,  0,
+         1, 0, -1,
+    };
+
+//    float m[] = {
+//        0, -1,
+//        1,  0,
+//    };
+
+    int mask_width = 3;
+    int mask_height = 3;
+    int x_overlay = 1;
+    int y_overlay = 1;
+
+    Matrix<float> mask(mask_width, mask_height, m);
 
     Matrix<float> matrix(32, 32);
     for (int i = 0; i < matrix.get_width(); i++) {
         for (int j = 0; j < matrix.get_height(); j++) {
 //            matrix.set(i, j, j * matrix.get_width() + i);
-            matrix.set(i, j, 1);
+            if ((i * j) % 4 == 0) {
+                matrix.set(i, j, 3);
+            } else {
+                matrix.set(i, j, 1);
+            }
         }
     }
 
     printf("\n");
     matrix.print(1);
-    Matrix<float> *matrices = matrix.divide(4, 2, 2, 2, 2);
+    Matrix<float> *matrices = matrix.divide(2, 2, x_overlay, y_overlay);
     for (int i = 0; i < 4; i++) {
         matrices[i].convolve(mask);
     }
     printf("\n");
 
-//    Matrix<float> *original = matrix.divide(1, 1, 1, 2, 2);
-//    printf("Big:\n");
-//    original[0].print(4);
-//    printf("\n");
+    Matrix<float> *original = matrix.divide(1, 1, x_overlay, y_overlay);
+    printf("Original:\n");
+    original[0].convolve(mask);
+    Matrix<float> orig_convolved = Matrix<float>::join(32, 32, 1, 1, original, x_overlay, y_overlay);
+    orig_convolved.print(2);
+    printf("\n");
+    delete [] original;
 
-//    printf("Original:\n");
-//    original[0].convolve(mask);
-//    Matrix<float> orig_convolved = Matrix<float>::join(32, 32, 1, 1, original, 2, 2);
-//    orig_convolved.print(4);
-//    printf("\n");
-//    delete [] original;
-
-    Matrix<float> after = Matrix<float>::join(32, 32, 2, 2, matrices, 2, 2);
+    Matrix<float> after = Matrix<float>::join(32, 32, 2, 2, matrices, x_overlay, y_overlay);
     printf("Divided:\n");
-    after.print(4);
+    after.print(2);
 
-//    delete [] matrices;
+    delete [] matrices;
     return 0;
 }

@@ -16,7 +16,7 @@ class Matrix {
             array = new T[0];
         }
 
-        Matrix(size_t width, size_t height) {
+        Matrix(unsigned int width, unsigned int height) {
             this->width = width;
             this->height = height;
             array = new T[width * height];
@@ -24,7 +24,7 @@ class Matrix {
             memset(array, 0, width * height * sizeof(T));
         }
 
-        Matrix(size_t width, size_t height,const T *values) {
+        Matrix(unsigned int width, unsigned int height,const T *values) {
             this->width = width;
             this->height = height;
 
@@ -53,7 +53,7 @@ class Matrix {
             return *this;
         }
 
-        T get(size_t x, size_t y) {
+        T get(unsigned int x, unsigned int y) {
             if (check_coordinates(x, y)) {
                 // throw exception
             }
@@ -61,7 +61,7 @@ class Matrix {
             return array[y * width + x];
         }
 
-        void set(size_t x, size_t y, T value) {
+        void set(unsigned int x, unsigned int y, T value) {
             if (check_coordinates(x, y)) {
                 // throw exception
             }
@@ -69,11 +69,11 @@ class Matrix {
             array[y * width + x] = value;
         }
 
-        size_t get_width() {
+        unsigned int get_width() {
             return width;
         }
 
-        size_t get_height() {
+        unsigned int get_height() {
             return height;
         }
 
@@ -137,17 +137,17 @@ class Matrix {
             delete [] tmp;
         }
 
-        Matrix<T> *divide(const size_t count,
-                const size_t x_divide, const size_t y_divide,
-                const size_t w_overlay, const size_t h_overlay) {
+        Matrix<T> *divide(const unsigned int x_divide, const unsigned int y_divide,
+                const unsigned int w_overlay, const unsigned int h_overlay) {
 
-            size_t original_block_width = width / x_divide;
-            size_t original_block_height = height / y_divide;
-            size_t original_block_size = original_block_width * original_block_height;
+            int count = x_divide * y_divide;
+            unsigned int original_block_width = width / x_divide;
+            unsigned int original_block_height = height / y_divide;
+            unsigned int original_block_size = original_block_width * original_block_height;
 
-            size_t block_width = original_block_width + 2 * w_overlay;
-            size_t block_height = original_block_height + 2 * h_overlay;
-            size_t block_size = block_width * block_height;
+            unsigned int block_width = original_block_width + 2 * w_overlay;
+            unsigned int block_height = original_block_height + 2 * h_overlay;
+            unsigned int block_size = block_width * block_height;
 
             T **blocks;
             blocks = new T*[count];
@@ -217,6 +217,27 @@ class Matrix {
             return matrices;
         }
 
+        char * serialize() {
+            char *buffer = new char[2*sizeof(unsigned int) + width*height*sizeof(T)];
+            memcpy(buffer, &width,  sizeof(unsigned int));
+            buffer += sizeof(unsigned int);
+
+            memcpy(buffer, &height, sizeof(unsigned int));
+            buffer += sizeof(unsigned int);
+
+            memcpy(buffer, array, width*height*sizeof(T));
+        }
+
+        void deserialize(const char *mem) {
+            int width, height;
+            &width = (unsigned int*) mem;
+            mem += sizeof(unsigned int);
+            &height = (unsigned int*) mem;
+            mem += sizeof(unsigned int);
+            std::cout << "Widht: " << width << std::endl;
+            std::cout << "Height: " << height << std::endl;
+        }
+
         static Matrix<T> join(const unsigned int width,
                               const unsigned int height,
                               const unsigned int x_divide,
@@ -276,8 +297,8 @@ class Matrix {
             }
         };
 
-        size_t width;
-        size_t height;
+        unsigned int width;
+        unsigned int height;
         T *array;
 
     private:
