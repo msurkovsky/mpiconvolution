@@ -11,9 +11,9 @@ class Matrix {
 
     public:
         Matrix() {
-            this->width = 0;
-            this->height = 0;
-            array = new T[0];
+            this->width = 1;
+            this->height = 1;
+            array = new T[1];
         }
 
         Matrix(unsigned int width, unsigned int height) {
@@ -218,24 +218,48 @@ class Matrix {
         }
 
         char * serialize() {
+            // make a buffer
             char *buffer = new char[2*sizeof(unsigned int) + width*height*sizeof(T)];
-            memcpy(buffer, &width,  sizeof(unsigned int));
-            buffer += sizeof(unsigned int);
+            char *p = buffer;
+            // serialize of width of matrix
+            *p = (char) width;
+            p += sizeof(unsigned int);
 
-            memcpy(buffer, &height, sizeof(unsigned int));
-            buffer += sizeof(unsigned int);
+            // serialize of height of matrix
+            *p = (char) height;
+            p += sizeof(unsigned int);
 
-            memcpy(buffer, array, width*height*sizeof(T));
+            // serialize values
+            memcpy(p, array, width*height*sizeof(T));
+
+            return buffer;
         }
 
-        void deserialize(const char *mem) {
-            int width, height;
-            &width = (unsigned int*) mem;
-            mem += sizeof(unsigned int);
-            &height = (unsigned int*) mem;
-            mem += sizeof(unsigned int);
-            std::cout << "Widht: " << width << std::endl;
-            std::cout << "Height: " << height << std::endl;
+        void deserialize(char *mem) {
+            // get width;
+            char *p = mem;
+            unsigned int *w = (unsigned int *) p;
+            p += sizeof(unsigned int);
+
+            // get height
+            unsigned int *h = (unsigned int*) p;
+            p += sizeof(unsigned int);
+
+            // get array
+            T *array = (T*) p;
+
+            // set matrix
+            width = *w;
+            height = *h;
+            if (this->array != NULL) {
+                delete [] this->array;
+            }
+            this->array = new T[width * height];
+            memcpy(this->array, array, width * height * sizeof(T));
+        }
+
+        unsigned int get_size_of_serialized_data() {
+            return 2*sizeof(unsigned int) + width*height*sizeof(T);
         }
 
         static Matrix<T> join(const unsigned int width,
