@@ -67,26 +67,32 @@ int main() {
         }
     }
 
-    printf("\n");
-    matrix.print(1);
-    Matrix<float> *matrices = matrix.divide(2, 2, x_overlay, y_overlay);
-    for (int i = 0; i < 4; i++) {
-        matrices[i].convolve(mask);
-    }
-    printf("\n");
+    char *mem = matrix.serialize();
 
-    Matrix<float> *original = matrix.divide(1, 1, x_overlay, y_overlay);
-    printf("Original:\n");
-    original[0].convolve(mask);
-    Matrix<float> orig_convolved = Matrix<float>::join(32, 32, 1, 1, original, x_overlay, y_overlay);
-    orig_convolved.print(2);
-    printf("\n");
-    delete [] original;
+    Matrix<float> matrix2;
+    matrix2.deserialize(mem);
+    matrix2.print();
 
-    Matrix<float> after = Matrix<float>::join(32, 32, 2, 2, matrices, x_overlay, y_overlay);
-    printf("Divided:\n");
-    after.print(2);
+//    printf("\n");
+//    matrix.print(1);
+//    Matrix<float> *matrices = matrix.divide(2, 2, x_overlay, y_overlay);
+//    for (int i = 0; i < 4; i++) {
+//        matrices[i].convolve(mask);
+//    }
+//    printf("\n");
+//
+//    Matrix<float> *original = matrix.divide(1, 1, x_overlay, y_overlay);
+//    printf("Original:\n");
+//    original[0].convolve(mask);
+//    Matrix<float> orig_convolved = Matrix<float>::join(32, 32, 1, 1, original, x_overlay, y_overlay);
+//    orig_convolved.print(2);
+//    printf("\n");
+//    delete [] original;
+//
+//    Matrix<float> after = Matrix<float>::join(32, 32, 2, 2, matrices, x_overlay, y_overlay);
+//    printf("Divided:\n");
+//    after.print(2);
 
-    delete [] matrices;
+//    delete [] matrices;
     return 0;
 }

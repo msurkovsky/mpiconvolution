@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 8192, matrix_h = 8192;
+    int matrix_w = 2048, matrix_h = 2048;
 
     int x_size = atoi(argv[1]);
     int y_size = atoi(argv[2]);
