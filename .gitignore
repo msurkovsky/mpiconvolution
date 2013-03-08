@@ -3,4 +3,4 @@
 *.out
 *.o
 *.swp
-/stats/**
+*/stats/**
