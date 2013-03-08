@@ -29,13 +29,16 @@ int main(int argc, char *argv[]) {
     MPI_Status stats[numtasks-1];
     MPI_Request reqs[numtasks-1];
 
-    if (argc < 3) {
-        printf("You must enter dividing of a grid!\n");
+    if (argc < 5) {
+        printf("You must enter size and dividing of a grid!\n");
         return 0;
     }
 
-    unsigned int size_x  = atoi(argv[1]);
-    unsigned int size_y  = atoi(argv[2]);
+    unsigned int matrix_width  = atoi(argv[1]);
+    unsigned int matrix_height = atoi(argv[2]);
+
+    unsigned int size_x  = atoi(argv[3]);
+    unsigned int size_y  = atoi(argv[4]);
 
     unsigned int mask_width  = 3;
     unsigned int mask_height = 3;
@@ -48,15 +51,12 @@ int main(int argc, char *argv[]) {
     unsigned int x_overlay = mask_width / 2;
     unsigned int y_overlay = mask_height / 2;
 
-    unsigned int matrix_width  = 2048;
-    unsigned int matrix_height = 2048;
-
     Matrix<float> block;
     unsigned block_size = (matrix_width/size_x + 2*x_overlay) *
         (matrix_height/size_y + 2*y_overlay);
 
     if (rank == 0) {
-        if (size_y * size_y != numtasks) {
+        if (size_x * size_y != numtasks) {
             printf("The number of processes does not correspond with dividing of grid!\n");
             printf("%d * %d != %d\n", size_x, size_y, numtasks);
             MPI_Finalize();
@@ -126,22 +126,23 @@ int main(int argc, char *argv[]) {
         }
         MPI_Waitall(numtasks-1, reqs, stats);
 
-        Matrix<float> matrix = Matrix<float>::join(
-            matrix_width, matrix_height, size_x, size_y, matrices, x_overlay, y_overlay);
-//        matrix.print(2);
-
         // deserialize received data
         for (int t = 1; t < numtasks; t++) {
             matrices[t].deserialize(buffers[t-1]);
             delete [] buffers[t-1];
         }
+
+        Matrix<float> matrix = Matrix<float>::join(
+            matrix_width, matrix_height, size_x, size_y, matrices, x_overlay, y_overlay);
+//        matrix.print(2);
+
         delete [] buffers;
         delete [] matrices;
     } else {
         char *buff = block.serialize();
         unsigned int size = block.get_size_of_serialized_data();
         MPI_Isend(buff, size, MPI_CHAR, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
-        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+//        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
     }
 
     MPI_Finalize();
