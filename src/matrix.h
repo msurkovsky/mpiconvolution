@@ -32,6 +32,13 @@ class Matrix {
             memcpy(array, values, width * height * sizeof(T));
         }
 
+        Matrix(const Matrix<T> &m) {
+            this->width = m.width;
+            this->height = m.height;
+            this->array = new T[width * height];
+            memcpy(this->array, m.array, width * height * sizeof(T));
+        }
+
         ~Matrix() {
             if (array) {
                 delete [] array;
@@ -333,6 +340,8 @@ class Matrix {
         T *get_raw_data() {
             return array;
         }
+
+
 };
 
 #endif // MATRIX_H
