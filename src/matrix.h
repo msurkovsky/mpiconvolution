@@ -16,27 +16,27 @@ class Matrix {
             array = new T[1];
         }
 
-        Matrix(unsigned int width, unsigned int height) {
+        Matrix(size_t width, size_t height) {
             this->width = width;
             this->height = height;
             array = new T[width * height];
             // fill matrix by zeros;
-            memset(array, 0, width * height * sizeof(T));
+            memset(array, 0, width*height*sizeof(T));
         }
 
-        Matrix(unsigned int width, unsigned int height,const T *values) {
+        Matrix(size_t width, size_t height, const T *values) {
             this->width = width;
             this->height = height;
 
             array = new T[width * height];
-            memcpy(array, values, width * height * sizeof(T));
+            memcpy(array, values, width*height*sizeof(T));
         }
 
         Matrix(const Matrix<T> &m) {
             this->width = m.width;
             this->height = m.height;
             this->array = new T[width * height];
-            memcpy(this->array, m.array, width * height * sizeof(T));
+            memcpy(this->array, m.array, width*height*sizeof(T));
         }
 
         ~Matrix() {
@@ -76,16 +76,16 @@ class Matrix {
             array[y * width + x] = value;
         }
 
-        unsigned int get_width() {
+        size_t get_width() {
             return width;
         }
 
-        unsigned int get_height() {
+        size_t get_height() {
             return height;
         }
 
         void clean() {  // fill matrix with zero
-            memset(array, 0, width * height * sizeof(T));
+            memset(array, 0, width*height*sizeof(T));
         }
 
         void print(int precision=1) {
@@ -101,14 +101,16 @@ class Matrix {
 
         void convolve(Matrix<T> &mask) {
 
-            int mask_width = mask.get_width();
-            int mask_height = mask.get_height();
-
+            size_t mask_width = mask.get_width();
+            size_t mask_height = mask.get_height();
             std::vector<Triple> mask_values;
             for (int i = 0; i < mask_width; i++) {
                 for (int j = 0; j < mask_height; j++) {
                     if (mask.get(i, j) != 0) {
-                        mask_values.push_back(Triple(i-mask_width/2, j-mask_height/2, mask.get(i, j)));
+                        mask_values.push_back(
+                            Triple(i-mask_width /2,
+                                   j-mask_height/2,
+                                   mask.get(i, j)));
                     }
                 }
             }
@@ -144,16 +146,18 @@ class Matrix {
             delete [] tmp;
         }
 
-        Matrix<T> *divide(const unsigned int x_divide, const unsigned int y_divide,
-                const unsigned int w_overlay, const unsigned int h_overlay) {
+        Matrix<T> *divide(const unsigned int x_divide,
+                          const unsigned int y_divide,
+                          const unsigned int x_overlay
+                          const unsigned int y_overlay) {
 
             int count = x_divide * y_divide;
             unsigned int original_block_width = width / x_divide;
             unsigned int original_block_height = height / y_divide;
             unsigned int original_block_size = original_block_width * original_block_height;
 
-            unsigned int block_width = original_block_width + 2 * w_overlay;
-            unsigned int block_height = original_block_height + 2 * h_overlay;
+            unsigned int block_width = original_block_width + 2 * x_overlay;
+            unsigned int block_height = original_block_height + 2 * x_overlay;
             unsigned int block_size = block_width * block_height;
 
             T **blocks;
@@ -170,13 +174,13 @@ class Matrix {
             for (int i = 0; i < x_divide; i++) {
                begin = i * original_block_width;
                end = begin + original_block_width - 1;
-               x_ranges[i] = Range(begin - w_overlay, end + w_overlay);
+               x_ranges[i] = Range(begin - x_overlay, end + x_overlay);
             }
 
             for (int i = 0; i < y_divide; i++) {
                 begin = i * original_block_height;
                 end = begin + original_block_height - 1;
-                y_ranges[i] = Range(begin - h_overlay, end + h_overlay);
+                y_ranges[i] = Range(begin - y_overlay, end + y_overlay);
             }
 
             for (int y = 0; y < y_divide; y++) {
@@ -191,19 +195,19 @@ class Matrix {
 
                         if (x_range.low < 0) {
                             // shift dest pointer
-                            int end_overlay = w_overlay;
+                            int end_overlay = x_overlay;
                             if (x_range.heigh >= width) {
                                 // if an overlay happens from the top and the bottom together.
-                                end_overlay = 2 * w_overlay;
+                                end_overlay = 2 * x_overlay;
                             }
-                            memcpy(&blocks[task][j1 * block_width + w_overlay],
+                            memcpy(&blocks[task][j1 * block_width + x_overlay],
                                    &array[j * width], // there is + 0 instead of x_range.low
                                    sizeof(T) * (block_width - end_overlay));
                         } else if (x_range.heigh >= width) {
                             // cut block size
                             memcpy(&blocks[task][j1 * block_width],
                                    &array[j * width + x_range.low],
-                                   sizeof(T) * (block_width - w_overlay));
+                                   sizeof(T) * (block_width - x_overlay));
                         } else {
                             memcpy(&blocks[task][j1 * block_width],
                                    &array[j * width + x_range.low],
@@ -226,15 +230,16 @@ class Matrix {
 
         char * serialize() {
             // make a buffer
-            char *buffer = new char[2*sizeof(unsigned int) + width*height*sizeof(T)];
+            char *buffer = new char[2*sizeof(size_t) + width*height*sizeof(T)];
             char *p = buffer;
+
             // serialize of width of matrix
-            *p = (char) width;
-            p += sizeof(unsigned int);
+            memcpy(p, &width, sizeof(size_t));
+            p += sizeof(size_t);
 
             // serialize of height of matrix
-            *p = (char) height;
-            p += sizeof(unsigned int);
+            memcpy(p, &height, sizeof(size_t));
+            p += sizeof(size_t);
 
             // serialize values
             memcpy(p, array, width*height*sizeof(T));
@@ -245,34 +250,30 @@ class Matrix {
         void deserialize(char *mem) {
             // get width;
             char *p = mem;
-            unsigned int *w = (unsigned int *) p;
-            p += sizeof(unsigned int);
+            width = *(size_t *) p;
+            p += sizeof(size_t);
 
             // get height
-            unsigned int *h = (unsigned int*) p;
-            p += sizeof(unsigned int);
-
-            // get array
-            T *array = (T*) p;
+            height = *(size_t *) p;
+            p += sizeof(size_t);
 
             // set matrix
-            width = *w;
-            height = *h;
             if (this->array != NULL) {
                 delete [] this->array;
             }
+            // copy array
             this->array = new T[width * height];
-            memcpy(this->array, array, width * height * sizeof(T));
+            memcpy(this->array, (T*) p, width*height*sizeof(T));
         }
 
-        unsigned int get_size_of_serialized_data() {
-            return 2*sizeof(unsigned int) + width*height*sizeof(T);
+        int get_size_of_serialized_data() {
+            return (2*sizeof(size_t) + width*height*sizeof(T));
         }
 
-        static Matrix<T> join(const unsigned int width,
-                              const unsigned int height,
-                              const unsigned int x_divide,
-                              const unsigned int y_divide,
+        static Matrix<T> join(const size_t width,
+                              const size_t height,
+                              const size_t x_divide,
+                              const size_t y_divide,
                               Matrix<T> * matrices,
                               const unsigned int x_overlay=0,
                               const unsigned int y_overlay=0) {
@@ -328,20 +329,14 @@ class Matrix {
             }
         };
 
-        unsigned int width;
-        unsigned int height;
+        size_t width;
+        size_t height;
         T *array;
 
     private:
         bool check_coordinates(int x, int y) {
-            return !(x < 0 || x >= width || y < 0 || y >= height);
+            return !(x >= width || y >= height);
         }
-
-        T *get_raw_data() {
-            return array;
-        }
-
-
 };
 
 #endif // MATRIX_H
