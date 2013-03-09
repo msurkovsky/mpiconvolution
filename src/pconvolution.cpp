@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 
 #include "matrix.h"
 
@@ -47,13 +48,16 @@ int main(int argc, char *argv[]) {
         1.0, 0.0, 1.0,
         0.0, 1.0, 0.0,
     };
+
     Matrix<float> mask(mask_width, mask_height, m);
     unsigned int x_overlay = mask_width / 2;
     unsigned int y_overlay = mask_height / 2;
 
+    int block_width = matrix_width / size_x + 2 * x_overlay;
+    int block_height = matrix_height / size_y + 2 * y_overlay;
+    int block_size = block_width * block_height;
+
     Matrix<float> block;
-    unsigned block_size = (matrix_width/size_x + 2*x_overlay) *
-        (matrix_height/size_y + 2*y_overlay);
 
     if (rank == 0) {
         if (size_x * size_y != numtasks) {
@@ -85,12 +89,13 @@ int main(int argc, char *argv[]) {
         for (int t = 1; t < numtasks; t++) {
             // send data
             buffers[t-1] = matrices[t].serialize();
-            unsigned int size = matrices[t].get_size_of_serialized_data();
-            MPI_Isend(buffers[t-1], size, MPI_CHAR, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
+            int snd_data_size = block_size*sizeof(float) + 2*sizeof(size_t);
+            MPI_Isend(buffers[t-1], snd_data_size, MPI_CHAR, t,
+                TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
         MPI_Waitall(numtasks-1, reqs, stats);
 
-        // deinitialize data
+        // free data
         for (int i = 0; i < numtasks-1; i++) {
             delete [] buffers[i];
         }
@@ -98,10 +103,12 @@ int main(int argc, char *argv[]) {
         delete [] matrices;
     } else {
         // receive blocks
-        unsigned int size = block_size * sizeof(float) + 2*sizeof(unsigned int);
-        char *buff = new char[size];
-        MPI_Irecv(buff, size, MPI_CHAR, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
+        int rcv_data_size = block_size*sizeof(float) + 2*sizeof(size_t);
+        char *buff = new char[rcv_data_size];
+        MPI_Irecv(buff, rcv_data_size, MPI_CHAR, 0, TAG_BLOCK,
+            MPI_COMM_WORLD, &reqs[rank-1]);
         MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+
         block.deserialize(buff);
         delete [] buff;
     }
@@ -114,15 +121,13 @@ int main(int argc, char *argv[]) {
 
         // zero process
         matrices[0] = block;
-
         //receive data from other processes
 
-        char **buffers;
-        buffers = new char*[numtasks-1];
+        char **buffers = new char*[numtasks-1];
         for (int t = 1; t < numtasks; t++) {
-            unsigned int size = block_size * sizeof(float) + 2*sizeof(unsigned int);
-            buffers[t-1] = new char[size];
-            MPI_Irecv(buffers[t-1], size, MPI_CHAR, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
+            int rcv_data_size = block_size*sizeof(float) + 2*sizeof(size_t);
+            buffers[t-1] = new char[rcv_data_size];
+            MPI_Irecv(buffers[t-1], rcv_data_size, MPI_CHAR, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
         MPI_Waitall(numtasks-1, reqs, stats);
 
@@ -134,15 +139,22 @@ int main(int argc, char *argv[]) {
 
         Matrix<float> matrix = Matrix<float>::join(
             matrix_width, matrix_height, size_x, size_y, matrices, x_overlay, y_overlay);
-//        matrix.print(2);
+//        matrix.print(1);
+
+        std::ofstream outfile ("parallel.bin", std::ios::out | std::ios::binary);
+        char *serialized_matrix = matrix.serialize();
+        outfile.write(serialized_matrix, matrix.get_size_of_serialized_data());
+        outfile.close();
+        delete [] serialized_matrix;
 
         delete [] buffers;
         delete [] matrices;
     } else {
         char *buff = block.serialize();
-        unsigned int size = block.get_size_of_serialized_data();
+        int size = block.get_size_of_serialized_data();
         MPI_Isend(buff, size, MPI_CHAR, 0, TAG_BLOCK, MPI_COMM_WORLD, &reqs[rank-1]);
-//        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+        MPI_Wait(&reqs[rank-1], &stats[rank-1]);
+        delete [] buff;
     }
 
     MPI_Finalize();

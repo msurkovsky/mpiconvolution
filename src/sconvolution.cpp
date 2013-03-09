@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 
 #include "matrix.h"
 
@@ -42,9 +43,14 @@ int main(int argc, char *argv[]){
     matrices[0].convolve(mask);
     matrix = Matrix<float>::join(
         matrix_width, matrix_height, 1, 1, matrices, x_overlay, y_overlay);
+//    matrix.print(1);
 
-//    matrix.print(2);
+    std::ofstream outfile ("sequential.bin", std::ios::out | std::ios::binary);
+    char *serialized_matrix = matrix.serialize();
+    outfile.write(serialized_matrix, matrix.get_size_of_serialized_data());
+    outfile.close();
 
+    delete [] serialized_matrix;
     delete [] matrices;
     return 0;
 }

@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 
 #define TAG_BLOCK        0
 #define TAG_BLOCK_WIDTH  1
@@ -38,21 +39,21 @@ int main(int argc, char *argv[]) {
     MPI_Status stats[numtasks-1];
     MPI_Request reqs[numtasks-1];
 
-    if (argc < 3) {
+    if (argc < 5) {
         printf("You must enter dividing of a grid!\n");
         return 0;
     }
 
-    int mask_w = 7, mask_h = 7;
-    const float mask[] = {
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-    };
+//    int mask_w = 7, mask_h = 7;
+//    const float mask[] = {
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+//    };
 
 //    int mask_w = 5, mask_h = 5;
 //    const float mask[] = {
@@ -63,20 +64,20 @@ int main(int argc, char *argv[]) {
 //        0.0, 0.0, 1.0, 0.0, 0.0,
 //    };
 
-//    int mask_w = 3, mask_h = 3;
-//    const float mask[] = {
-//        0.0, 1.0, 0.0,
-//        1.0, 0.0, 1.0,
-//        0.0, 1.0, 0.0,
-//    };
+    int mask_w = 3, mask_h = 3;
+    const float mask[] = {
+        0.0, 1.0, 0.0,
+        1.0, 0.0, 1.0,
+        0.0, 1.0, 0.0,
+    };
 
     int mw_overlay = mask_w / 2;
     int mh_overlay = mask_h / 2;
 
-    int matrix_w = 2048, matrix_h = 2048;
-
-    int x_size = atoi(argv[1]);
-    int y_size = atoi(argv[2]);
+    int matrix_w = atoi(argv[1]);
+    int matrix_h = atoi(argv[2]);
+    int x_size = atoi(argv[3]);
+    int y_size = atoi(argv[4]);
 
     int original_block_width = matrix_w / x_size;
     int original_block_height = matrix_h / y_size;
@@ -90,7 +91,7 @@ int main(int argc, char *argv[]) {
 
     float *matrix;
     if (rank == 0) { // divide matrix
-        matrix = generate_matrix(matrix_w, matrix_h, 1.0);
+        matrix = generate_matrix(matrix_w, matrix_h, 2.0);
         if (x_size * y_size != numtasks) {
             printf("The number of processes does not correspond with dividing of grid!\n");
             printf("%d * %d != %d\n", x_size, y_size, numtasks);
@@ -190,15 +191,15 @@ int main(int argc, char *argv[]) {
 
     if (rank == 0) {
         // zero process
-        float **blocks;
-        blocks = new float*[numtasks];
-        for (int t = 0; t < numtasks; t++) {
-            blocks[t] = new float[original_block_size];
-        }
+        float **blocks = new float*[numtasks];
+
+        // zero process
+        blocks[0] = new float[original_block_size];
         memcpy(blocks[0], conv, sizeof(float) * original_block_size);
 
         // receive data from other processes
         for (int t = 1;  t < numtasks; t++) {
+            blocks[t] = new float[original_block_size];
             MPI_Irecv(blocks[t], original_block_size, MPI_FLOAT, t, TAG_BLOCK, MPI_COMM_WORLD, &reqs[t-1]);
         }
         MPI_Waitall(numtasks-1, reqs, stats);
@@ -216,6 +217,11 @@ int main(int argc, char *argv[]) {
                                  (i % original_block_width)];
             }
         }
+
+//        print_matrix(matrix, matrix_w, matrix_h);
+        std::ofstream outfile ("original.bin", std::ios::out | std::ios::binary);
+        outfile.write((char *) matrix, matrix_w * matrix_h * sizeof(float));
+        outfile.close();
 
         dealocate_2d_float_array(blocks, numtasks, original_block_size);
         delete [] matrix;
@@ -260,7 +266,7 @@ float *convolve(const float *matrix, // input matrix
     for (int i = mask_w_half; i < matrix_width - mask_w_half; i++) {
         for (int j = mask_h_half; j < matrix_height - mask_h_half; j++) {
             float sum = 0.0;
-            int count = 0;
+//            int count = 0;
             for (int k = -mask_w_half; k <= mask_w_half; k++) {
                 for (int l = -mask_h_half; l <= mask_h_half; l++) {
                     x = i + k;
@@ -268,10 +274,11 @@ float *convolve(const float *matrix, // input matrix
 
                     sum += (matrix[y * matrix_width + x] *
                             mask[(mask_h_half+l) * mask_width + (mask_w_half+k)]);
-                    count++;
+//                    count++;
                 }
             }
-            out[(j-mask_h_half) * (matrix_width - 2*mask_w_half) + (i-mask_w_half)] = sum / count;
+//            out[(j-mask_h_half) * (matrix_width - 2*mask_w_half) + (i-mask_w_half)] = sum / count;
+            out[(j-mask_h_half) * (matrix_width - 2*mask_w_half) + (i-mask_w_half)] = sum;
         }
     }
 
@@ -281,7 +288,7 @@ float *convolve(const float *matrix, // input matrix
 void print_matrix(const float *matrix, int width, int height) {
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
-            printf("%6.2f ", matrix[j * width + i]);
+            printf("%4.2f ", matrix[j * width + i]);
         }
         printf("\n");
     }
